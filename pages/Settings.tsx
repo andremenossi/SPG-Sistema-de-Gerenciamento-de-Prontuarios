@@ -1,12 +1,15 @@
-
 import React, { useState, useEffect } from 'react';
 import { db } from '../services/database';
 import { User, UserType, SystemConfig } from '../types';
-import { Save, User as UserIcon, Lock, Plus, Trash2, X, Edit2, Check, Settings as SettingsIcon, Layers, ArrowUp, ArrowDown, ArrowUpDown, Map, Clock } from 'lucide-react';
+import { Save, User as UserIcon, Lock, Plus, Trash2, X, Edit2, Check, Layers, ArrowUp, ArrowDown, ArrowUpDown, Map, Clock, Eye, EyeOff, Image, Upload } from 'lucide-react';
 
 const Settings: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  
+  // Profile Form
   const [password, setPassword] = useState('');
+  const [oldPassword, setOldPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [name, setName] = useState('');
   
   // Destinations
@@ -42,6 +45,21 @@ const Settings: React.FC = () => {
   const handleSaveProfile = (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentUser) return;
+
+    // Password Validation
+    if (password) {
+        if (currentUser.tipo !== UserType.ADMIN) {
+            if (!oldPassword) {
+                alert("Para alterar a senha, você deve informar a senha antiga.");
+                return;
+            }
+            if (oldPassword !== currentUser.senha_hash) {
+                alert("A senha antiga está incorreta.");
+                return;
+            }
+        }
+    }
+
     const updatedUser = { 
       ...currentUser, 
       nome: name, 
@@ -50,8 +68,29 @@ const Settings: React.FC = () => {
     db.updateUser(updatedUser);
     localStorage.setItem('sgp_session', JSON.stringify(updatedUser));
     setCurrentUser(updatedUser);
+    
     setPassword('');
+    setOldPassword('');
     alert('Perfil atualizado com sucesso!');
+  };
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>, key: string) => {
+      const file = e.target.files?.[0];
+      if (file) {
+          const reader = new FileReader();
+          reader.onload = (evt) => {
+              if (evt.target?.result) {
+                  localStorage.setItem(key, evt.target.result as string);
+                  window.location.reload(); // Force reload to apply changes
+              }
+          };
+          reader.readAsDataURL(file);
+      }
+  };
+
+  const resetImage = (key: string) => {
+      localStorage.removeItem(key);
+      window.location.reload();
   };
 
   // --- LIST MANIPULATION ---
@@ -189,13 +228,64 @@ const Settings: React.FC = () => {
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Nome Completo</label>
               <input type="text" value={name} onChange={e => setName(e.target.value)} className="w-full px-4 py-2 border border-slate-300 dark:border-slate-500 rounded-lg focus:ring-2 focus:ring-hospital-500 dark:bg-slate-800 dark:text-white"/>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Nova Senha</label>
-              <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="********" className="w-full px-4 py-2 border border-slate-300 dark:border-slate-500 rounded-lg focus:ring-2 focus:ring-hospital-500 dark:bg-slate-800 dark:text-white"/>
+            
+            <div className="pt-2 border-t border-slate-100 dark:border-slate-600">
+                <p className="text-xs font-bold text-slate-400 uppercase mb-3">Segurança</p>
+                
+                {/* Old Password Field (Only if not Admin) */}
+                {currentUser.tipo !== UserType.ADMIN && (
+                    <div className="mb-4">
+                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Senha Antiga <span className="text-xs text-slate-400 font-normal">(Obrigatório para trocar senha)</span></label>
+                        <input type="password" value={oldPassword} onChange={e => setOldPassword(e.target.value)} className="w-full px-4 py-2 border border-slate-300 dark:border-slate-500 rounded-lg focus:ring-2 focus:ring-hospital-500 dark:bg-slate-800 dark:text-white"/>
+                    </div>
+                )}
+
+                <div>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Nova Senha</label>
+                    <div className="relative">
+                        <input type={showPassword ? "text" : "password"} value={password} onChange={e => setPassword(e.target.value)} placeholder="********" className="w-full px-4 py-2 border border-slate-300 dark:border-slate-500 rounded-lg focus:ring-2 focus:ring-hospital-500 dark:bg-slate-800 dark:text-white pr-10"/>
+                        <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+                            {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                        </button>
+                    </div>
+                </div>
             </div>
+
             <button type="submit" className="flex items-center gap-2 bg-hospital-600 hover:bg-hospital-700 text-white px-6 py-2 rounded-lg font-medium transition-colors"><Save size={18} /> Salvar Alterações</button>
           </form>
         </div>
+      </div>
+
+      {/* CUSTOM IMAGES */}
+      <div className="bg-white dark:bg-slate-700 rounded-xl shadow-sm border border-slate-200 dark:border-slate-600 overflow-hidden w-full">
+          <div className="p-6 border-b border-slate-100 dark:border-slate-600 bg-slate-50 dark:bg-slate-800 flex items-center gap-3">
+              <Image className="text-orange-600 dark:text-orange-400" />
+              <h3 className="font-bold text-slate-800 dark:text-slate-100">Personalização Visual</h3>
+          </div>
+          <div className="p-8 grid grid-cols-1 md:grid-cols-2 gap-8">
+              <div>
+                  <h4 className="font-bold text-slate-700 dark:text-slate-300 mb-2">Logo do Hospital</h4>
+                  <p className="text-xs text-slate-500 mb-4">Aparece na tela de login e topo do menu.</p>
+                  <div className="flex gap-2 items-center">
+                      <label className="flex items-center gap-2 bg-hospital-600 text-white px-4 py-2 rounded-lg cursor-pointer hover:bg-hospital-700 text-sm font-bold">
+                          <Upload size={16}/> Enviar Logo
+                          <input type="file" className="hidden" accept="image/*" onChange={(e) => handleImageUpload(e, 'sgp_custom_logo')} />
+                      </label>
+                      {localStorage.getItem('sgp_custom_logo') && <button onClick={() => resetImage('sgp_custom_logo')} className="text-red-500 hover:underline text-xs">Remover</button>}
+                  </div>
+              </div>
+              <div>
+                  <h4 className="font-bold text-slate-700 dark:text-slate-300 mb-2">Imagem de Fundo (Login)</h4>
+                  <p className="text-xs text-slate-500 mb-4">Fundo da tela de login.</p>
+                  <div className="flex gap-2 items-center">
+                      <label className="flex items-center gap-2 bg-hospital-600 text-white px-4 py-2 rounded-lg cursor-pointer hover:bg-hospital-700 text-sm font-bold">
+                          <Upload size={16}/> Enviar Fundo
+                          <input type="file" className="hidden" accept="image/*" onChange={(e) => handleImageUpload(e, 'sgp_custom_bg')} />
+                      </label>
+                      {localStorage.getItem('sgp_custom_bg') && <button onClick={() => resetImage('sgp_custom_bg')} className="text-red-500 hover:underline text-xs">Remover</button>}
+                  </div>
+              </div>
+          </div>
       </div>
 
       {/* 2. Destinations */}

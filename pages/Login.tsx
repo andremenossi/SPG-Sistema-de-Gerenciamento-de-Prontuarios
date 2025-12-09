@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { db } from '../services/database';
 import { User } from '../types';
+import { Eye, EyeOff } from 'lucide-react';
 
 interface LoginProps {
   onLogin: (user: User) => void;
@@ -10,6 +11,7 @@ interface LoginProps {
 const Login: React.FC<LoginProps> = ({ onLogin }) => {
   const [login, setLogin] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -24,14 +26,16 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
     }
   };
 
+  const bgImage = localStorage.getItem('sgp_custom_bg') || './background-login.jpg';
+  const logoImage = localStorage.getItem('sgp_custom_logo') || './logo-hepp.png';
+
   return (
     <div className="min-h-screen relative flex items-center justify-center overflow-hidden bg-slate-200">
       
       {/* BACKGROUND IMAGE LAYER */}
-      {/* Requer o arquivo 'background-login.jpg' na pasta public/ */}
       <div 
         className="absolute inset-0 z-0 bg-cover bg-center"
-        style={{ backgroundImage: "url('./background-login.jpg')" }}
+        style={{ backgroundImage: `url('${bgImage}')` }}
       ></div>
 
       {/* GRADIENT OVERLAY LAYER */}
@@ -46,7 +50,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
           <div className="pt-10 pb-6 px-8 text-center flex flex-col items-center">
             <div className="mb-4 h-24 flex items-center justify-center">
                 <img 
-                   src="./logo-hepp.png" 
+                   src={logoImage}
                    alt="Logo HEPP" 
                    className="h-full w-auto object-contain drop-shadow-sm" 
                    onError={(e) => { 
@@ -79,13 +83,18 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
               </div>
               <div>
                 <label className="block text-xs font-bold text-slate-600 uppercase mb-1 ml-1">Senha</label>
-                <input
-                  type="password"
-                  className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-hospital-500 focus:border-hospital-500 transition-all outline-none bg-white/80"
-                  placeholder="••••••••"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                />
+                <div className="relative">
+                    <input
+                      type={showPassword ? "text" : "password"}
+                      className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-hospital-500 focus:border-hospital-500 transition-all outline-none bg-white/80 pr-10"
+                      placeholder="••••••••"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                    />
+                    <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-3.5 text-slate-400 hover:text-slate-600">
+                        {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                    </button>
+                </div>
               </div>
               
               <button

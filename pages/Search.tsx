@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { db } from '../services/database';
-import { Search as SearchIcon, MapPin, User, ArrowUp, ArrowDown, X, Clock, Edit, Trash2, AlertTriangle, Calendar as CalendarIcon, ArrowLeftRight, CheckSquare, Layers, HelpCircle, ChevronDown, Check } from 'lucide-react';
+import { Search as SearchIcon, MapPin, User, ArrowUp, ArrowDown, X, Clock, Edit, Trash2, AlertTriangle, Calendar as CalendarIcon, ArrowLeftRight, CheckSquare, Layers, HelpCircle, ChevronDown, Loader2 } from 'lucide-react';
 import { Prontuario, ProntuarioStatus } from '../types';
 
 interface SearchProps {
@@ -20,6 +20,7 @@ const Search: React.FC<SearchProps> = ({ userLogin }) => {
   
   // Edit State
   const [isEditing, setIsEditing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [editingProntuario, setEditingProntuario] = useState<Prontuario | null>(null);
 
   // Delete State
@@ -168,18 +169,23 @@ const Search: React.FC<SearchProps> = ({ userLogin }) => {
   const handleSaveEdit = (e: React.FormEvent) => {
     e.preventDefault();
     if (editingProntuario) {
-       // Validation Enforced
-       if (editingProntuario.idade === undefined || editingProntuario.idade === null || String(editingProntuario.idade) === '') return alert("Idade obrigatória");
+       // Validation Enforced - Fixed to allow Age 0
+       if (editingProntuario.idade === undefined || editingProntuario.idade === null || String(editingProntuario.idade).trim() === '') return alert("Idade obrigatória");
        if (!editingProntuario.sexo || editingProntuario.sexo === 'O') return alert("Sexo obrigatório");
        if (!editingProntuario.data_nascimento) return alert("Nascimento obrigatório");
        
-       try {
-         db.updateProntuario(editingProntuario);
-         refreshData();
-         setIsEditing(false);
-       } catch (error: any) {
-         alert(error.message);
-       }
+       setIsSaving(true);
+       setTimeout(() => {
+           try {
+             db.updateProntuario(editingProntuario);
+             refreshData();
+             setIsEditing(false);
+           } catch (error: any) {
+             alert(error.message);
+           } finally {
+             setIsSaving(false);
+           }
+       }, 500);
     }
   };
 
@@ -244,8 +250,13 @@ const Search: React.FC<SearchProps> = ({ userLogin }) => {
             });
             refreshData();
             setMoveMessage(`${movedCount} prontuários movimentados! (${ignoredCount} ignorados)`);
-            setSelectedIds(new Set());
-            setTimeout(() => { setIsMoving(false); setMoveMessage(''); }, 2000);
+            
+            // NOTE: Moved clearing of selected IDs inside setTimeout to avoid visual glitch in modal
+            setTimeout(() => { 
+                setSelectedIds(new Set());
+                setIsMoving(false); 
+                setMoveMessage(''); 
+            }, 2000);
         } catch(err) {
             setMoveMessage('Erro ao movimentar em massa.');
         }
@@ -260,7 +271,7 @@ const Search: React.FC<SearchProps> = ({ userLogin }) => {
          try {
             db.addMovimentacao({
                 numero_prontuario: movingProntuario.numero_prontuario,
-                nome_paciente: movingProntuario.nome_paciente, // Fallback name passed here
+                nome_paciente: movingProntuario.nome_paciente, // Fallback name
                 idade: movingProntuario.idade,
                 origem: movingProntuario.local_atual,
                 destino: moveDestino,
@@ -511,7 +522,9 @@ const Search: React.FC<SearchProps> = ({ userLogin }) => {
                   </div>
                   <div className="pt-4 flex gap-3">
                      <button type="button" onClick={() => setIsEditing(false)} className="flex-1 py-2.5 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700 rounded-lg border border-transparent">Cancelar</button>
-                     <button type="submit" className="flex-1 py-2.5 bg-hospital-600 hover:bg-hospital-700 text-white rounded-lg font-bold shadow-md">Salvar Alterações</button>
+                     <button type="submit" disabled={isSaving} className="flex-1 py-2.5 bg-hospital-600 hover:bg-hospital-700 disabled:opacity-70 text-white rounded-lg font-bold shadow-md flex items-center justify-center gap-2">
+                         {isSaving ? <><Loader2 size={18} className="animate-spin"/> Salvando...</> : 'Salvar Alterações'}
+                     </button>
                   </div>
                </form>
             </div>

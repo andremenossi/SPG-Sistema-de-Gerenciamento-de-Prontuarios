@@ -2,13 +2,14 @@
 import React, { useState } from 'react';
 import { db } from '../services/database';
 import { User, UserType } from '../types';
-import { Trash2, UserPlus, Shield, User as UserIcon, Edit, Save, X } from 'lucide-react';
+import { Trash2, UserPlus, Shield, User as UserIcon, Edit, Save, X, Eye, EyeOff } from 'lucide-react';
 
 const UsersPage: React.FC = () => {
   const [users, setUsers] = useState<User[]>(db.getUsers());
   const [formUser, setFormUser] = useState({ id: 0, nome: '', login: '', senha: '', tipo: UserType.COMUM });
   const [isEditing, setIsEditing] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<User | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
 
   const refreshUsers = () => {
     setUsers([...db.getUsers()]); 
@@ -17,6 +18,7 @@ const UsersPage: React.FC = () => {
   const resetForm = () => {
     setFormUser({ id: 0, nome: '', login: '', senha: '', tipo: UserType.COMUM });
     setIsEditing(false);
+    setShowPassword(false);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -99,13 +101,18 @@ const UsersPage: React.FC = () => {
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
                 {isEditing ? 'Nova Senha (Opcional)' : 'Senha'}
               </label>
-              <input 
-                type="password" 
-                className="w-full px-3 py-2 border border-slate-300 dark:border-slate-500 rounded-lg focus:ring-2 focus:ring-hospital-500 bg-white dark:bg-slate-800 dark:text-white" 
-                value={formUser.senha}
-                onChange={e => setFormUser({...formUser, senha: e.target.value})}
-                placeholder={isEditing ? '********' : ''}
-              />
+              <div className="relative">
+                  <input 
+                    type={showPassword ? "text" : "password"} 
+                    className="w-full px-3 py-2 border border-slate-300 dark:border-slate-500 rounded-lg focus:ring-2 focus:ring-hospital-500 bg-white dark:bg-slate-800 dark:text-white pr-10" 
+                    value={formUser.senha}
+                    onChange={e => setFormUser({...formUser, senha: e.target.value})}
+                    placeholder={isEditing ? '********' : ''}
+                  />
+                  <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+                      {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+              </div>
             </div>
             <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Tipo de Acesso</label>

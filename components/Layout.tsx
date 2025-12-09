@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
-import { LayoutDashboard, ArrowLeftRight, Search, History, FileInput, Users, LogOut, Settings, Sun, Moon, RotateCw, UserPlus } from 'lucide-react';
+import { LayoutDashboard, ArrowLeftRight, Search, History, FileInput, Users, LogOut, Settings, Sun, Moon, RotateCw, UserPlus, Loader2 } from 'lucide-react';
 import { User, UserType } from '../types';
 import { db } from '../services/database';
 
@@ -15,6 +15,9 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout }) => {
   const location = useLocation();
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [config, setConfig] = useState(db.getConfig());
+  
+  // Reload State
+  const [isReloading, setIsReloading] = useState(false);
 
   useEffect(() => {
     // Theme
@@ -40,7 +43,10 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout }) => {
   };
 
   const reloadPage = () => {
-    window.location.reload();
+    setIsReloading(true);
+    setTimeout(() => {
+        window.location.reload();
+    }, 2500);
   };
 
   if (!user) return <>{children}</>;
@@ -57,11 +63,26 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout }) => {
   const canImport = user.tipo === UserType.ADMIN || config.permissions.commonCanImportAgenda;
 
   return (
-    <div className="flex h-screen bg-slate-50 dark:bg-slate-900 transition-colors overflow-hidden">
+    <div className="flex h-screen bg-slate-50 dark:bg-slate-900 transition-colors overflow-hidden relative">
+      
+      {/* ELEGANT RELOAD OVERLAY */}
+      {isReloading && (
+        <div className="fixed inset-0 z-[200] bg-slate-900/90 backdrop-blur-md flex flex-col items-center justify-center animate-in fade-in duration-300">
+            <div className="relative">
+                <div className="w-16 h-16 border-4 border-hospital-500/30 border-t-hospital-500 rounded-full animate-spin"></div>
+                <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="w-8 h-8 bg-hospital-600 rounded flex items-center justify-center font-bold text-white text-xs shadow-lg">SGP</div>
+                </div>
+            </div>
+            <h2 className="mt-6 text-2xl font-bold text-white tracking-tight">Recarregando Sistema</h2>
+            <p className="text-slate-400 mt-2 text-sm">Atualizando dados e interfaces...</p>
+        </div>
+      )}
+
       {/* Sidebar */}
       <aside className="w-64 bg-slate-900 dark:bg-slate-950 text-white flex flex-col shadow-xl flex-shrink-0 border-r border-slate-800">
         <div className="p-6 border-b border-slate-800 flex items-center gap-3">
-          {/* Logo Pequeno SGP (CSS PURO) */}
+          {/* Always show SGP Logo in Sidebar */}
           <div className="w-8 h-8 bg-hospital-600 rounded flex items-center justify-center font-bold text-white shadow-lg shrink-0 select-none border border-hospital-500">
              SGP
           </div>
