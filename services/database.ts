@@ -48,10 +48,15 @@ class DatabaseService {
         commonCanDeleteProntuario: false,
         commonCanManageDestinations: false,
         commonCanManageVolumes: false,
-        commonCanManageRetention: false
+        commonCanManageRetention: false,
+        commonCanCustomizeVisuals: false,
+        commonCanManagePageLimit: false
       },
       volumeOptions: ['1 Volume', '2 Volumes', '3 Volumes', '4 Volumes', 'Caixa Arquivo'],
-      agendaHistoryRetentionDays: 0 // 0 = Nunca excluir
+      agendaHistoryRetentionDays: 0, // 0 = Nunca excluir
+      adminCanBypassRequiredFields: false,
+      maxRowsSearch: 20,
+      maxRowsHistory: 20
     };
 
     if (!storedConfig) {
@@ -62,7 +67,19 @@ class DatabaseService {
       if (!parsed.volumeOptions) parsed.volumeOptions = defaultConfig.volumeOptions;
       if (parsed.permissions.commonCanManageVolumes === undefined) parsed.permissions.commonCanManageVolumes = false;
       if (parsed.permissions.commonCanManageRetention === undefined) parsed.permissions.commonCanManageRetention = false;
+      if (parsed.permissions.commonCanCustomizeVisuals === undefined) parsed.permissions.commonCanCustomizeVisuals = false;
+      if (parsed.permissions.commonCanManagePageLimit === undefined) parsed.permissions.commonCanManagePageLimit = false;
       if (parsed.agendaHistoryRetentionDays === undefined) parsed.agendaHistoryRetentionDays = 0;
+      if (parsed.adminCanBypassRequiredFields === undefined) parsed.adminCanBypassRequiredFields = false;
+      
+      // Migrate old single maxRowsPerPage to split fields
+      if (parsed.maxRowsSearch === undefined) {
+          parsed.maxRowsSearch = parsed.maxRowsPerPage !== undefined ? parsed.maxRowsPerPage : 20;
+      }
+      if (parsed.maxRowsHistory === undefined) {
+          parsed.maxRowsHistory = parsed.maxRowsPerPage !== undefined ? parsed.maxRowsPerPage : 20;
+      }
+      if ('maxRowsPerPage' in parsed) delete parsed.maxRowsPerPage;
       
       // Remove old requiredFields if present
       if ('requiredFields' in parsed) delete parsed.requiredFields;
@@ -126,10 +143,15 @@ class DatabaseService {
             commonCanDeleteProntuario: false,
             commonCanManageDestinations: false,
             commonCanManageVolumes: false,
-            commonCanManageRetention: false
+            commonCanManageRetention: false,
+            commonCanCustomizeVisuals: false,
+            commonCanManagePageLimit: false
         },
         volumeOptions: ['1 Volume', '2 Volumes', '3 Volumes', '4 Volumes'],
-        agendaHistoryRetentionDays: 0
+        agendaHistoryRetentionDays: 0,
+        adminCanBypassRequiredFields: false,
+        maxRowsSearch: 20,
+        maxRowsHistory: 20
     };
   }
 
@@ -246,8 +268,13 @@ class DatabaseService {
     }
 
     if (idx !== -1) {
-      list[idx].local_anterior = list[idx].local_atual;
-      list[idx].local_atual = novoLocal;
+      // Logic for preserving 'local_anterior' if new location is same as current.
+      // This allows multiple agendas to be processed without overwriting the original "Source"
+      if (list[idx].local_atual !== novoLocal) {
+          list[idx].local_anterior = list[idx].local_atual;
+          list[idx].local_atual = novoLocal;
+      }
+      // Always update timestamp to reflect activity
       list[idx].ultima_movimentacao = new Date().toISOString();
       localStorage.setItem(DB_KEYS.PRONTUARIOS, JSON.stringify(list));
     }

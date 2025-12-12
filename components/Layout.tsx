@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { LayoutDashboard, ArrowLeftRight, Search, History, FileInput, Users, LogOut, Settings, Sun, Moon, RotateCw, UserPlus, Loader2 } from 'lucide-react';
@@ -20,26 +21,39 @@ const Layout: React.FC<LayoutProps> = ({ children, user, onLogout }) => {
   const [isReloading, setIsReloading] = useState(false);
 
   useEffect(() => {
-    // Theme
-    const savedTheme = localStorage.getItem('sgp_theme');
-    if (savedTheme === 'dark') {
-      setIsDarkMode(true);
-      document.documentElement.classList.add('dark');
+    if (user) {
+        // Load theme from user profile
+        if (user.theme === 'dark') {
+          setIsDarkMode(true);
+          document.documentElement.classList.add('dark');
+        } else {
+          setIsDarkMode(false);
+          document.documentElement.classList.remove('dark');
+        }
     }
     // Config
     setConfig(db.getConfig());
-  }, []);
+  }, [user]);
 
   const toggleTheme = () => {
+    if (!user) return;
+
     const newMode = !isDarkMode;
     setIsDarkMode(newMode);
+    
+    // Update DOM
     if (newMode) {
       document.documentElement.classList.add('dark');
-      localStorage.setItem('sgp_theme', 'dark');
     } else {
       document.documentElement.classList.remove('dark');
-      localStorage.setItem('sgp_theme', 'light');
     }
+
+    // Persist to User Profile
+    const updatedUser = { ...user, theme: newMode ? 'dark' : 'light' } as User;
+    db.updateUser(updatedUser);
+    
+    // Update session storage so explicit refresh keeps the state correct locally
+    sessionStorage.setItem('sgp_session', JSON.stringify(updatedUser));
   };
 
   const reloadPage = () => {

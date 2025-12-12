@@ -1,7 +1,8 @@
+
 import React, { useState, useEffect } from 'react';
 import { AgendaItem, ProntuarioStatus, AgendaHistory } from '../types';
 import { db } from '../services/database';
-import { Upload, FileSpreadsheet, Check, AlertTriangle, AlertCircle, Calendar, Trash2, Edit, X, ArrowLeft, ArrowUp, ArrowDown, Eye, Loader2 } from 'lucide-react';
+import { Upload, FileSpreadsheet, Check, AlertTriangle, AlertCircle, Calendar, Trash2, Edit, X, ArrowLeft, ArrowUp, ArrowDown, Eye, Loader2, CheckCircle } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
 interface ImportAgendaProps {
@@ -27,7 +28,8 @@ const ImportAgenda: React.FC<ImportAgendaProps> = ({ userLogin }) => {
   const [viewMode, setViewMode] = useState<'edit' | 'read'>('edit');
   const [isProcessing, setIsProcessing] = useState(false);
   
-  // Modals
+  // Modals States
+  const [resultModal, setResultModal] = useState<{type: 'success' | 'error', title: string, message: string} | null>(null);
   const [showMissingModal, setShowMissingModal] = useState(false);
   const [showConflictModal, setShowConflictModal] = useState(false);
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
@@ -40,6 +42,10 @@ const ImportAgenda: React.FC<ImportAgendaProps> = ({ userLogin }) => {
   const refreshLists = () => {
     setDrafts(db.getAgendaDrafts());
     setProcessedHistory(db.getAgendaProcessed());
+  };
+
+  const showResultModal = (type: 'success' | 'error', title: string, message: string) => {
+      setResultModal({ type, title, message });
   };
 
   // --- Sorting Logic ---
@@ -204,7 +210,7 @@ const ImportAgenda: React.FC<ImportAgendaProps> = ({ userLogin }) => {
         }
         flushDraft(); 
 
-        if (draftsFound.length === 0) { alert("Nenhuma agenda identificada."); return; }
+        if (draftsFound.length === 0) { showResultModal('error', 'Falha na Importação', "Nenhuma agenda identificada."); return; }
 
         let addedCount = 0;
         draftsFound.forEach(draft => {
@@ -224,11 +230,11 @@ const ImportAgenda: React.FC<ImportAgendaProps> = ({ userLogin }) => {
         });
 
         refreshLists();
-        alert(`${addedCount} agenda(s) importada(s) como Rascunho!`);
+        showResultModal('success', 'Importação Realizada', `${addedCount} agenda(s) importada(s) como Rascunho!`);
         // Reset file input
         e.target.value = '';
 
-      } catch (err) { alert("Erro ao ler arquivo."); }
+      } catch (err) { showResultModal('error', 'Erro Crítico', "Erro ao ler arquivo."); }
     };
     reader.readAsArrayBuffer(file);
   };
@@ -269,11 +275,11 @@ const ImportAgenda: React.FC<ImportAgendaProps> = ({ userLogin }) => {
       if (viewMode === 'read') return;
       
       const itemsToProcess = reviewItems.filter(i => i.selecionado);
-      if (itemsToProcess.length === 0) { alert("Nenhum prontuário selecionado."); return; }
+      if (itemsToProcess.length === 0) { showResultModal('error', 'Atenção', "Nenhum prontuário selecionado."); return; }
 
       const criticalMissing = itemsToProcess.some(i => !i.nome_paciente && !i.numero_prontuario);
       if (criticalMissing) { 
-          alert("Existem prontuários selecionados sem Nome e sem Número. Remova a seleção deles para continuar."); 
+          showResultModal('error', 'Dados Inválidos', "Existem prontuários selecionados sem Nome e sem Número. Remova a seleção deles para continuar."); 
           return; 
       }
 
@@ -386,9 +392,9 @@ const ImportAgenda: React.FC<ImportAgendaProps> = ({ userLogin }) => {
           }
 
           setIsProcessing(false);
-          alert(`Processamento Concluído!\nNovos Cadastros: ${created}\nMovimentações: ${moved}`);
           setStep(1);
           refreshLists();
+          showResultModal('success', 'Processamento Concluído', `Novos Cadastros: ${created}\nMovimentações: ${moved}`);
       }, 100); // 100ms delay to ensure Loader renders
   };
 
@@ -521,7 +527,7 @@ const ImportAgenda: React.FC<ImportAgendaProps> = ({ userLogin }) => {
                            {viewMode === 'edit' && (
                                <button onClick={initiateProcessing} className="bg-green-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-green-700 shadow flex items-center gap-2">
                                    <Check size={18}/> {activeDraft.status === 'draft' ? 'Processar Agenda' : 'Salvar Alterações'}
-                               </button>
+                                </button>
                            )}
                        </div>
                    </div>
@@ -533,8 +539,8 @@ const ImportAgenda: React.FC<ImportAgendaProps> = ({ userLogin }) => {
                                        <input type="checkbox" disabled={viewMode === 'read'} checked={selectAll} onChange={(e) => handleSelectAll(e.target.checked)} className="w-4 h-4 disabled:opacity-50" />
                                    </th>
                                    <th className="p-3">Horário</th>
-                                   <th className="p-3">Prontuário {viewMode === 'edit' && '(Editável)'}</th>
-                                   <th className="p-3">Paciente {viewMode === 'edit' && '(Editável)'}</th>
+                                   <th className="p-3">Prontuário</th>
+                                   <th className="p-3">Paciente</th>
                                    <th className="p-3">Idade</th>
                                    <th className="p-3">Sexo</th>
                                    <th className="p-3">Status</th>
@@ -625,6 +631,22 @@ const ImportAgenda: React.FC<ImportAgendaProps> = ({ userLogin }) => {
                       <button type="button" onClick={() => setDeleteTargetId(null)} className="flex-1 py-2 bg-slate-200 dark:bg-slate-700 dark:text-white rounded hover:bg-slate-300">Cancelar</button>
                       <button type="button" onClick={confirmDeleteHistory} className="flex-1 py-2 bg-red-600 text-white rounded font-bold hover:bg-red-700">Excluir</button>
                   </div>
+              </div>
+          </div>
+      )}
+
+      {/* RESULT MODAL (SUCCESS/ERROR) */}
+      {resultModal && (
+          <div className="fixed inset-0 bg-slate-900/60 flex items-center justify-center z-[120] p-4" onClick={() => setResultModal(null)}>
+              <div className="bg-white dark:bg-slate-800 p-8 rounded-xl max-w-sm border border-slate-200 dark:border-slate-600 shadow-2xl flex flex-col items-center text-center animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
+                  <div className={`w-16 h-16 rounded-full flex items-center justify-center mb-4 ${resultModal.type === 'success' ? 'bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400'}`}>
+                      {resultModal.type === 'success' ? <CheckCircle size={32} /> : <AlertTriangle size={32} />}
+                  </div>
+                  <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">{resultModal.title}</h3>
+                  <p className="text-slate-600 dark:text-slate-300 mb-6 whitespace-pre-line">{resultModal.message}</p>
+                  <button onClick={() => setResultModal(null)} className={`w-full py-3 rounded-lg font-bold text-white shadow-lg ${resultModal.type === 'success' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'}`}>
+                      Fechar
+                  </button>
               </div>
           </div>
       )}

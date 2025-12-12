@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Layout from './components/Layout';
@@ -16,8 +17,8 @@ function App() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Check session
-    const stored = localStorage.getItem('sgp_session');
+    // Check session in sessionStorage (clears on close)
+    const stored = sessionStorage.getItem('sgp_session');
     if (stored) {
       setUser(JSON.parse(stored));
     }
@@ -26,12 +27,12 @@ function App() {
 
   const handleLogin = (u: User) => {
     setUser(u);
-    localStorage.setItem('sgp_session', JSON.stringify(u));
+    sessionStorage.setItem('sgp_session', JSON.stringify(u));
   };
 
   const handleLogout = () => {
     setUser(null);
-    localStorage.removeItem('sgp_session');
+    sessionStorage.removeItem('sgp_session');
   };
 
   if (loading) return null;

@@ -1,7 +1,9 @@
+
 import React, { useState, useEffect } from 'react';
 import { db } from '../services/database';
 import { User, UserType, SystemConfig } from '../types';
-import { Save, User as UserIcon, Lock, Plus, Trash2, X, Edit2, Check, Layers, ArrowUp, ArrowDown, ArrowUpDown, Map, Clock, Eye, EyeOff, Image, Upload } from 'lucide-react';
+import { Save, User as UserIcon, Lock, Plus, Trash2, X, Edit2, Check, Layers, ArrowUp, ArrowDown, ArrowUpDown, Map, Clock, Eye, EyeOff, Image, Upload, ToggleLeft, ToggleRight, AlertTriangle, List, Download } from 'lucide-react';
+import * as XLSX from 'xlsx';
 
 const Settings: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -10,12 +12,14 @@ const Settings: React.FC = () => {
   const [password, setPassword] = useState('');
   const [oldPassword, setOldPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [showOldPassword, setShowOldPassword] = useState(false);
   const [name, setName] = useState('');
   
   // Destinations
   const [destinations, setDestinations] = useState<string[]>([]);
   const [newDest, setNewDest] = useState('');
   const [editingDest, setEditingDest] = useState<{original: string, current: string} | null>(null);
+  const [destSortDir, setDestSortDir] = useState<'asc' | 'desc'>('asc');
 
   // Deletion State
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null); 
@@ -23,12 +27,14 @@ const Settings: React.FC = () => {
   // Volumes
   const [newVolume, setNewVolume] = useState('');
   const [deleteVolumeTarget, setDeleteVolumeTarget] = useState<string | null>(null);
+  const [volSortDir, setVolSortDir] = useState<'asc' | 'desc'>('asc');
 
   // System Config
   const [config, setConfig] = useState<SystemConfig>(db.getConfig());
 
   useEffect(() => {
-    const session = localStorage.getItem('sgp_session');
+    // Session is now in sessionStorage
+    const session = sessionStorage.getItem('sgp_session');
     if (session) {
       const u = JSON.parse(session);
       setCurrentUser(u);
@@ -48,6 +54,11 @@ const Settings: React.FC = () => {
 
     // Password Validation
     if (password) {
+        if (password.length < 5) {
+            alert("A nova senha deve ter no mínimo 5 caracteres.");
+            return;
+        }
+
         if (currentUser.tipo !== UserType.ADMIN) {
             if (!oldPassword) {
                 alert("Para alterar a senha, você deve informar a senha antiga.");
@@ -66,7 +77,7 @@ const Settings: React.FC = () => {
       ...(password ? { senha_hash: password } : {}) 
     };
     db.updateUser(updatedUser);
-    localStorage.setItem('sgp_session', JSON.stringify(updatedUser));
+    sessionStorage.setItem('sgp_session', JSON.stringify(updatedUser));
     setCurrentUser(updatedUser);
     
     setPassword('');
@@ -101,10 +112,6 @@ const Settings: React.FC = () => {
       [newList[index], newList[targetIndex]] = [newList[targetIndex], newList[index]];
     }
     return newList;
-  };
-
-  const sortAlphabetically = (list: string[]) => {
-      return [...list].sort((a, b) => a.localeCompare(b));
   };
 
   // --- Destinations ---
@@ -146,10 +153,14 @@ const Settings: React.FC = () => {
       db.saveDestinations(updated);
   };
   
-  const sortDestinations = () => {
-      const updated = sortAlphabetically(destinations);
+  const toggleSortDestinations = () => {
+      const newDir = destSortDir === 'asc' ? 'desc' : 'asc';
+      const updated = [...destinations].sort((a, b) => {
+          return newDir === 'asc' ? a.localeCompare(b) : b.localeCompare(a);
+      });
       setDestinations(updated);
       db.saveDestinations(updated);
+      setDestSortDir(newDir);
   };
 
   // --- Volumes ---
@@ -181,11 +192,15 @@ const Settings: React.FC = () => {
       db.saveConfig(newConfig);
   };
 
-  const sortVolumes = () => {
-      const updated = sortAlphabetically(config.volumeOptions);
+  const toggleSortVolumes = () => {
+      const newDir = volSortDir === 'asc' ? 'desc' : 'asc';
+      const updated = [...config.volumeOptions].sort((a, b) => {
+          return newDir === 'asc' ? a.localeCompare(b) : b.localeCompare(a);
+      });
       const newConfig = { ...config, volumeOptions: updated };
       setConfig(newConfig);
       db.saveConfig(newConfig);
+      setVolSortDir(newDir);
   };
 
   // --- Config Permissions & Retention ---
@@ -207,12 +222,51 @@ const Settings: React.FC = () => {
       db.saveConfig(newConfig);
   };
 
+  const handleLimitChange = (field: 'maxRowsSearch' | 'maxRowsHistory', rows: number) => {
+      const newConfig = { ...config, [field]: rows };
+      setConfig(newConfig);
+      db.saveConfig(newConfig);
+  };
+
+  const handleBypassChange = (val: boolean) => {
+      const newConfig = { ...config, adminCanBypassRequiredFields: val };
+      setConfig(newConfig);
+      db.saveConfig(newConfig);
+  };
+
+  const handleExportProntuarios = () => {
+      const allData = db.getProntuarios();
+      const exportData = allData.map(p => ({
+          'N° de Prontuário': p.numero_prontuario,
+          'Nome': p.nome_paciente,
+          'Idade': p.idade,
+          'Data de Nascimento': p.data_nascimento,
+          'Sexo': p.sexo,
+          'Local Atual': p.local_atual,
+          'Situação': p.status,
+          'Volumes': p.volumes
+      }));
+
+      const ws = XLSX.utils.json_to_sheet(exportData);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Prontuários");
+      XLSX.writeFile(wb, "SGP_Todos_Prontuarios.xlsx");
+  };
+
   if (!currentUser) return <div>Carregando...</div>;
 
   const isAdmin = currentUser.tipo === UserType.ADMIN;
+  const canCustomizeVisuals = isAdmin || config.permissions.commonCanCustomizeVisuals;
   const canManageDestinations = isAdmin || config.permissions.commonCanManageDestinations;
   const canManageVolumes = isAdmin || config.permissions.commonCanManageVolumes;
+  
+  // Independent Checks for Data Config Block
   const canManageRetention = isAdmin || config.permissions.commonCanManageRetention;
+  const canManagePageLimit = isAdmin || config.permissions.commonCanManagePageLimit;
+  const canViewDataConfig = canManageRetention || canManagePageLimit;
+  
+  const customLogo = localStorage.getItem('sgp_custom_logo');
+  const customBg = localStorage.getItem('sgp_custom_bg');
 
   return (
     <div className="w-full space-y-8 pb-12 overflow-y-auto h-full pr-2">
@@ -236,7 +290,12 @@ const Settings: React.FC = () => {
                 {currentUser.tipo !== UserType.ADMIN && (
                     <div className="mb-4">
                         <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Senha Antiga <span className="text-xs text-slate-400 font-normal">(Obrigatório para trocar senha)</span></label>
-                        <input type="password" value={oldPassword} onChange={e => setOldPassword(e.target.value)} className="w-full px-4 py-2 border border-slate-300 dark:border-slate-500 rounded-lg focus:ring-2 focus:ring-hospital-500 dark:bg-slate-800 dark:text-white"/>
+                        <div className="relative">
+                            <input type={showOldPassword ? "text" : "password"} value={oldPassword} onChange={e => setOldPassword(e.target.value)} className="w-full px-4 py-2 border border-slate-300 dark:border-slate-500 rounded-lg focus:ring-2 focus:ring-hospital-500 dark:bg-slate-800 dark:text-white pr-10"/>
+                             <button type="button" onClick={() => setShowOldPassword(!showOldPassword)} className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+                                {showOldPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                            </button>
+                        </div>
                     </div>
                 )}
 
@@ -248,6 +307,7 @@ const Settings: React.FC = () => {
                             {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                         </button>
                     </div>
+                    {password && password.length < 5 && <p className="text-xs text-red-500 mt-1">Mínimo de 5 caracteres.</p>}
                 </div>
             </div>
 
@@ -256,37 +316,69 @@ const Settings: React.FC = () => {
         </div>
       </div>
 
-      {/* CUSTOM IMAGES */}
+      {/* EXPORT DATA */}
       <div className="bg-white dark:bg-slate-700 rounded-xl shadow-sm border border-slate-200 dark:border-slate-600 overflow-hidden w-full">
           <div className="p-6 border-b border-slate-100 dark:border-slate-600 bg-slate-50 dark:bg-slate-800 flex items-center gap-3">
-              <Image className="text-orange-600 dark:text-orange-400" />
-              <h3 className="font-bold text-slate-800 dark:text-slate-100">Personalização Visual</h3>
+              <Download className="text-green-600 dark:text-green-400" />
+              <h3 className="font-bold text-slate-800 dark:text-slate-100">Exportar Dados</h3>
           </div>
-          <div className="p-8 grid grid-cols-1 md:grid-cols-2 gap-8">
-              <div>
-                  <h4 className="font-bold text-slate-700 dark:text-slate-300 mb-2">Logo do Hospital</h4>
-                  <p className="text-xs text-slate-500 mb-4">Aparece na tela de login e topo do menu.</p>
-                  <div className="flex gap-2 items-center">
-                      <label className="flex items-center gap-2 bg-hospital-600 text-white px-4 py-2 rounded-lg cursor-pointer hover:bg-hospital-700 text-sm font-bold">
-                          <Upload size={16}/> Enviar Logo
-                          <input type="file" className="hidden" accept="image/*" onChange={(e) => handleImageUpload(e, 'sgp_custom_logo')} />
-                      </label>
-                      {localStorage.getItem('sgp_custom_logo') && <button onClick={() => resetImage('sgp_custom_logo')} className="text-red-500 hover:underline text-xs">Remover</button>}
-                  </div>
-              </div>
-              <div>
-                  <h4 className="font-bold text-slate-700 dark:text-slate-300 mb-2">Imagem de Fundo (Login)</h4>
-                  <p className="text-xs text-slate-500 mb-4">Fundo da tela de login.</p>
-                  <div className="flex gap-2 items-center">
-                      <label className="flex items-center gap-2 bg-hospital-600 text-white px-4 py-2 rounded-lg cursor-pointer hover:bg-hospital-700 text-sm font-bold">
-                          <Upload size={16}/> Enviar Fundo
-                          <input type="file" className="hidden" accept="image/*" onChange={(e) => handleImageUpload(e, 'sgp_custom_bg')} />
-                      </label>
-                      {localStorage.getItem('sgp_custom_bg') && <button onClick={() => resetImage('sgp_custom_bg')} className="text-red-500 hover:underline text-xs">Remover</button>}
-                  </div>
-              </div>
+          <div className="p-8">
+              <p className="text-sm text-slate-600 dark:text-slate-300 mb-4">Gere um arquivo Excel contendo todos os prontuários cadastrados atualmente no sistema.</p>
+              <button onClick={handleExportProntuarios} className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-6 py-2.5 rounded-lg font-bold shadow transition-all hover:-translate-y-0.5">
+                  <Download size={18}/> Baixar Excel Completo
+              </button>
           </div>
       </div>
+
+      {/* CUSTOM IMAGES */}
+      {canCustomizeVisuals && (
+        <div className="bg-white dark:bg-slate-700 rounded-xl shadow-sm border border-slate-200 dark:border-slate-600 overflow-hidden w-full">
+            <div className="p-6 border-b border-slate-100 dark:border-slate-600 bg-slate-50 dark:bg-slate-800 flex items-center gap-3">
+                <Image className="text-orange-600 dark:text-orange-400" />
+                <h3 className="font-bold text-slate-800 dark:text-slate-100">Personalização Visual</h3>
+            </div>
+            <div className="p-8 grid grid-cols-1 md:grid-cols-2 gap-8">
+                <div>
+                    <h4 className="font-bold text-slate-700 dark:text-slate-300 mb-2">Logo do Hospital</h4>
+                    <p className="text-xs text-slate-500 mb-4">Logotipo no menu de Login.</p>
+                    
+                    {/* PREVIEW */}
+                    {customLogo && (
+                        <div className="mb-4 p-4 border border-dashed border-slate-300 rounded-lg bg-slate-50 dark:bg-slate-800 flex justify-center">
+                            <img src={customLogo} alt="Logo Preview" className="h-16 object-contain" />
+                        </div>
+                    )}
+
+                    <div className="flex gap-2 items-center">
+                        <label className="flex items-center gap-2 bg-hospital-600 text-white px-4 py-2 rounded-lg cursor-pointer hover:bg-hospital-700 text-sm font-bold">
+                            <Upload size={16}/> Enviar Logo
+                            <input type="file" className="hidden" accept="image/*" onChange={(e) => handleImageUpload(e, 'sgp_custom_logo')} />
+                        </label>
+                        {customLogo && <button onClick={() => resetImage('sgp_custom_logo')} className="text-red-500 hover:underline text-xs">Remover</button>}
+                    </div>
+                </div>
+                <div>
+                    <h4 className="font-bold text-slate-700 dark:text-slate-300 mb-2">Imagem de Fundo (Login)</h4>
+                    <p className="text-xs text-slate-500 mb-4">Fundo da tela de login.</p>
+                    
+                    {/* PREVIEW */}
+                    {customBg && (
+                        <div className="mb-4 p-4 border border-dashed border-slate-300 rounded-lg bg-slate-50 dark:bg-slate-800 flex justify-center">
+                            <img src={customBg} alt="Background Preview" className="h-16 w-full object-cover rounded" />
+                        </div>
+                    )}
+
+                    <div className="flex gap-2 items-center">
+                        <label className="flex items-center gap-2 bg-hospital-600 text-white px-4 py-2 rounded-lg cursor-pointer hover:bg-hospital-700 text-sm font-bold">
+                            <Upload size={16}/> Enviar Fundo
+                            <input type="file" className="hidden" accept="image/*" onChange={(e) => handleImageUpload(e, 'sgp_custom_bg')} />
+                        </label>
+                        {customBg && <button onClick={() => resetImage('sgp_custom_bg')} className="text-red-500 hover:underline text-xs">Remover</button>}
+                    </div>
+                </div>
+            </div>
+        </div>
+      )}
 
       {/* 2. Destinations */}
       {canManageDestinations && (
@@ -294,9 +386,12 @@ const Settings: React.FC = () => {
           <div className="p-6 border-b border-slate-100 dark:border-slate-600 bg-slate-50 dark:bg-slate-800 flex items-center justify-between">
             <div className="flex items-center gap-3">
                 <Map className="text-purple-600 dark:text-purple-400" />
-                <h3 className="font-bold text-slate-800 dark:text-slate-100">Gerenciar Destinos / Setores</h3>
+                <h3 className="font-bold text-slate-800 dark:text-slate-100">Destinos / Setores</h3>
             </div>
-            <button onClick={sortDestinations} className="text-xs bg-slate-200 hover:bg-slate-300 dark:bg-slate-600 dark:text-white px-2 py-1 rounded flex items-center gap-1"><ArrowUpDown size={12}/> Ordenar A-Z</button>
+            <button onClick={toggleSortDestinations} className="text-xs bg-slate-200 hover:bg-slate-300 dark:bg-slate-600 dark:text-white px-3 py-1.5 rounded flex items-center gap-2 transition-colors">
+                <ArrowUpDown size={12}/> 
+                <span>Ordenar {destSortDir === 'asc' ? 'A-Z' : 'Z-A'}</span>
+            </button>
           </div>
           <div className="p-8">
             <div className="flex gap-2 mb-6 relative max-w-lg">
@@ -342,9 +437,12 @@ const Settings: React.FC = () => {
               <div className="p-6 border-b border-slate-100 dark:border-slate-600 bg-slate-50 dark:bg-slate-800 flex items-center justify-between">
                   <div className="flex items-center gap-3">
                       <Layers className="text-blue-600 dark:text-blue-400" />
-                      <h3 className="font-bold text-slate-800 dark:text-slate-100">Gerenciar Opções de Volumes</h3>
+                      <h3 className="font-bold text-slate-800 dark:text-slate-100">Opções de Volumes</h3>
                   </div>
-                  <button onClick={sortVolumes} className="text-xs bg-slate-200 hover:bg-slate-300 dark:bg-slate-600 dark:text-white px-2 py-1 rounded flex items-center gap-1"><ArrowUpDown size={12}/> Ordenar A-Z</button>
+                  <button onClick={toggleSortVolumes} className="text-xs bg-slate-200 hover:bg-slate-300 dark:bg-slate-600 dark:text-white px-3 py-1.5 rounded flex items-center gap-2 transition-colors">
+                      <ArrowUpDown size={12}/> 
+                      <span>Ordenar {volSortDir === 'asc' ? 'A-Z' : 'Z-A'}</span>
+                  </button>
               </div>
               <div className="p-8">
                   <div className="flex gap-2 mb-6 max-w-lg">
@@ -369,36 +467,71 @@ const Settings: React.FC = () => {
           </div>
       )}
 
-      {/* 4. Agenda History Retention (New) */}
-      {canManageRetention && (
+      {/* 4. Agenda History Retention & Page Limits */}
+      {canViewDataConfig && (
           <div className="bg-white dark:bg-slate-700 rounded-xl shadow-sm border border-slate-200 dark:border-slate-600 overflow-hidden w-full">
               <div className="p-6 border-b border-slate-100 dark:border-slate-600 bg-slate-50 dark:bg-slate-800 flex items-center gap-3">
                   <Clock className="text-emerald-600 dark:text-emerald-400" />
-                  <h3 className="font-bold text-slate-800 dark:text-slate-100">Retenção de Histórico de Agendas</h3>
+                  <h3 className="font-bold text-slate-800 dark:text-slate-100">Configurações de Dados</h3>
               </div>
-              <div className="p-8">
-                  <p className="text-sm text-slate-500 dark:text-slate-300 mb-4">
-                      Defina por quanto tempo as agendas processadas serão mantidas no histórico antes de serem excluídas automaticamente.
-                  </p>
-                  <div className="flex items-center gap-4">
-                      <select 
-                          className="px-4 py-2 border border-slate-300 dark:border-slate-500 rounded-lg focus:ring-2 focus:ring-emerald-500 dark:bg-slate-800 dark:text-white"
-                          value={config.agendaHistoryRetentionDays || 0}
-                          onChange={(e) => handleRetentionChange(parseInt(e.target.value))}
-                      >
-                          <option value={0}>Nunca excluir (Manter para sempre)</option>
-                          <option value={7}>7 dias</option>
-                          <option value={15}>15 dias</option>
-                          <option value={30}>30 dias</option>
-                          <option value={60}>60 dias</option>
-                          <option value={90}>90 dias (3 meses)</option>
-                          <option value={180}>180 dias (6 meses)</option>
-                          <option value={365}>365 dias (1 ano)</option>
-                      </select>
-                      <span className="text-sm text-emerald-600 dark:text-emerald-400 font-medium">
-                          {config.agendaHistoryRetentionDays === 0 ? "O histórico não será apagado automaticamente." : `Agendas com mais de ${config.agendaHistoryRetentionDays} dias serão removidas.`}
-                      </span>
-                  </div>
+              <div className="p-8 grid grid-cols-1 md:grid-cols-2 gap-8">
+                  {/* Retention */}
+                  {canManageRetention && (
+                      <div>
+                          <h5 className="font-bold text-slate-700 dark:text-slate-300 mb-2">Retenção de Histórico</h5>
+                          <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">As agendas processadas serão excluídas automaticamente após:</p>
+                          <select 
+                              className="w-full px-4 py-2 border border-slate-300 dark:border-slate-500 rounded-lg focus:ring-2 focus:ring-emerald-500 dark:bg-slate-800 dark:text-white"
+                              value={config.agendaHistoryRetentionDays || 0}
+                              onChange={(e) => handleRetentionChange(parseInt(e.target.value))}
+                          >
+                              <option value={0}>Nunca excluir</option>
+                              <option value={7}>7 dias</option>
+                              <option value={15}>15 dias</option>
+                              <option value={30}>30 dias</option>
+                              <option value={60}>60 dias</option>
+                              <option value={90}>90 dias</option>
+                              <option value={365}>1 ano</option>
+                          </select>
+                      </div>
+                  )}
+
+                  {/* Pagination Limits */}
+                  {canManagePageLimit && (
+                      <div className="space-y-4">
+                          <h5 className="font-bold text-slate-700 dark:text-slate-300 mb-2 flex items-center gap-2 border-b border-slate-200 dark:border-slate-700 pb-2"><List size={16}/> Limite de Listagem</h5>
+                          <div>
+                              <p className="text-xs font-bold text-slate-500 mb-1">Tela de Consulta</p>
+                              <select 
+                                  className="w-full px-4 py-2 border border-slate-300 dark:border-slate-500 rounded-lg focus:ring-2 focus:ring-emerald-500 dark:bg-slate-800 dark:text-white"
+                                  value={config.maxRowsSearch !== undefined ? config.maxRowsSearch : 20}
+                                  onChange={(e) => handleLimitChange('maxRowsSearch', parseInt(e.target.value))}
+                              >
+                                  <option value={0}>Mostrar Tudo (Sem Limite)</option>
+                                  <option value={10}>10 registros</option>
+                                  <option value={20}>20 registros (Padrão)</option>
+                                  <option value={30}>30 registros</option>
+                                  <option value={50}>50 registros</option>
+                                  <option value={100}>100 registros</option>
+                              </select>
+                          </div>
+                          <div>
+                              <p className="text-xs font-bold text-slate-500 mb-1">Tela de Histórico</p>
+                              <select 
+                                  className="w-full px-4 py-2 border border-slate-300 dark:border-slate-500 rounded-lg focus:ring-2 focus:ring-emerald-500 dark:bg-slate-800 dark:text-white"
+                                  value={config.maxRowsHistory !== undefined ? config.maxRowsHistory : 20}
+                                  onChange={(e) => handleLimitChange('maxRowsHistory', parseInt(e.target.value))}
+                              >
+                                  <option value={0}>Mostrar Tudo (Sem Limite)</option>
+                                  <option value={10}>10 registros</option>
+                                  <option value={20}>20 registros (Padrão)</option>
+                                  <option value={30}>30 registros</option>
+                                  <option value={50}>50 registros</option>
+                                  <option value={100}>100 registros</option>
+                              </select>
+                          </div>
+                      </div>
+                  )}
               </div>
           </div>
       )}
@@ -408,47 +541,73 @@ const Settings: React.FC = () => {
         <div className="bg-white dark:bg-slate-700 rounded-xl shadow-sm border border-slate-200 dark:border-slate-600 overflow-hidden w-full">
           <div className="p-6 border-b border-slate-100 dark:border-slate-600 bg-slate-50 dark:bg-slate-800 flex items-center gap-3">
             <Lock className="text-red-600 dark:text-red-400" />
-            <h3 className="font-bold text-slate-800 dark:text-slate-100">Controle de Permissões (Usuários Comuns)</h3>
+            <h3 className="font-bold text-slate-800 dark:text-slate-100">Controle de Permissões</h3>
           </div>
-          <div className="p-8 grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-6">
-             <div>
-                <h5 className="font-bold text-slate-500 dark:text-slate-400 text-xs uppercase mb-4 tracking-wider">Acesso a Módulos</h5>
-                <div className="space-y-3">
-                  <label className="flex items-center gap-3 cursor-pointer select-none">
-                    <input type="checkbox" className="w-5 h-5 rounded text-red-600 focus:ring-red-500" checked={config.permissions.commonCanViewHistory} onChange={(e) => handleConfigChange('permissions', 'commonCanViewHistory', e.target.checked)}/>
-                    <span className="text-sm text-slate-700 dark:text-slate-300">Visualizar Histórico</span>
-                  </label>
-                  <label className="flex items-center gap-3 cursor-pointer select-none">
-                    <input type="checkbox" className="w-5 h-5 rounded text-red-600 focus:ring-red-500" checked={config.permissions.commonCanImportAgenda} onChange={(e) => handleConfigChange('permissions', 'commonCanImportAgenda', e.target.checked)}/>
-                    <span className="text-sm text-slate-700 dark:text-slate-300">Importar Agenda</span>
-                  </label>
-                  <label className="flex items-center gap-3 cursor-pointer select-none">
-                    <input type="checkbox" className="w-5 h-5 rounded text-red-600 focus:ring-red-500" checked={config.permissions.commonCanManageDestinations} onChange={(e) => handleConfigChange('permissions', 'commonCanManageDestinations', e.target.checked)}/>
-                    <span className="text-sm text-slate-700 dark:text-slate-300">Gerenciar Destinos</span>
-                  </label>
-                   <label className="flex items-center gap-3 cursor-pointer select-none">
-                    <input type="checkbox" className="w-5 h-5 rounded text-red-600 focus:ring-red-500" checked={config.permissions.commonCanManageVolumes} onChange={(e) => handleConfigChange('permissions', 'commonCanManageVolumes', e.target.checked)}/>
-                    <span className="text-sm text-slate-700 dark:text-slate-300">Gerenciar Opções de Volumes</span>
-                  </label>
-                  <label className="flex items-center gap-3 cursor-pointer select-none">
-                    <input type="checkbox" className="w-5 h-5 rounded text-red-600 focus:ring-red-500" checked={config.permissions.commonCanManageRetention} onChange={(e) => handleConfigChange('permissions', 'commonCanManageRetention', e.target.checked)}/>
-                    <span className="text-sm text-slate-700 dark:text-slate-300">Gerenciar Retenção de Histórico</span>
-                  </label>
-                </div>
+          <div className="p-8">
+              
+             {/* Admin Config Section */}
+             <div className="mb-8 p-4 bg-yellow-50 dark:bg-yellow-900/10 border border-yellow-200 dark:border-yellow-800 rounded-xl">
+                 <h5 className="font-bold text-yellow-800 dark:text-yellow-400 text-sm uppercase mb-4 tracking-wider flex items-center gap-2">
+                     <AlertTriangle size={16}/> Permissões Administrativas
+                 </h5>
+                 <label className="flex items-center gap-3 cursor-pointer select-none">
+                     <div className="relative inline-block w-12 h-6 transition duration-200 ease-in-out">
+                         <input type="checkbox" className="peer absolute opacity-0 w-0 h-0" checked={config.adminCanBypassRequiredFields} onChange={(e) => handleBypassChange(e.target.checked)}/>
+                         <span className={`absolute cursor-pointer top-0 left-0 right-0 bottom-0 bg-slate-300 dark:bg-slate-600 rounded-full transition-all duration-300 before:content-[''] before:absolute before:w-4 before:h-4 before:bottom-1 before:left-1 before:bg-white before:rounded-full before:transition-all peer-checked:bg-yellow-500 peer-checked:before:translate-x-6`}></span>
+                     </div>
+                     <span className="text-sm font-medium text-slate-700 dark:text-slate-200">Permitir que Admins salvem dados incompletos (Bypass)</span>
+                 </label>
+                 <p className="text-xs text-slate-500 mt-2 ml-14">Se ativo, administradores poderão salvar ou editar prontuários mesmo se campos obrigatórios estiverem vazios.</p>
              </div>
-             <div>
-                <h5 className="font-bold text-slate-500 dark:text-slate-400 text-xs uppercase mb-4 tracking-wider">Dados</h5>
-                <div className="space-y-3">
-                  <label className="flex items-center gap-3 cursor-pointer select-none">
-                    <input type="checkbox" className="w-5 h-5 rounded text-red-600 focus:ring-red-500" checked={config.permissions.commonCanEditProntuario} onChange={(e) => handleConfigChange('permissions', 'commonCanEditProntuario', e.target.checked)}/>
-                    <span className="text-sm text-slate-700 dark:text-slate-300">Editar Prontuários</span>
-                  </label>
-                  <label className="flex items-center gap-3 cursor-pointer select-none">
-                    <input type="checkbox" className="w-5 h-5 rounded text-red-600 focus:ring-red-500" checked={config.permissions.commonCanDeleteProntuario} onChange={(e) => handleConfigChange('permissions', 'commonCanDeleteProntuario', e.target.checked)}/>
-                    <span className="text-sm text-slate-700 dark:text-slate-300">Excluir Prontuários</span>
-                  </label>
-                </div>
-             </div>
+
+             <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-6">
+                 <div>
+                    <h5 className="font-bold text-slate-500 dark:text-slate-400 text-xs uppercase mb-4 tracking-wider">Acesso Comum (Módulos)</h5>
+                    <div className="space-y-3">
+                      <label className="flex items-center gap-3 cursor-pointer select-none">
+                        <input type="checkbox" className="w-5 h-5 rounded text-red-600 focus:ring-red-500" checked={config.permissions.commonCanViewHistory} onChange={(e) => handleConfigChange('permissions', 'commonCanViewHistory', e.target.checked)}/>
+                        <span className="text-sm text-slate-700 dark:text-slate-300">Visualizar Histórico</span>
+                      </label>
+                      <label className="flex items-center gap-3 cursor-pointer select-none">
+                        <input type="checkbox" className="w-5 h-5 rounded text-red-600 focus:ring-red-500" checked={config.permissions.commonCanImportAgenda} onChange={(e) => handleConfigChange('permissions', 'commonCanImportAgenda', e.target.checked)}/>
+                        <span className="text-sm text-slate-700 dark:text-slate-300">Importar Agenda</span>
+                      </label>
+                      <label className="flex items-center gap-3 cursor-pointer select-none">
+                        <input type="checkbox" className="w-5 h-5 rounded text-red-600 focus:ring-red-500" checked={config.permissions.commonCanCustomizeVisuals} onChange={(e) => handleConfigChange('permissions', 'commonCanCustomizeVisuals', e.target.checked)}/>
+                        <span className="text-sm text-slate-700 dark:text-slate-300">Personalizar Visual (Logo/Fundo)</span>
+                      </label>
+                      <label className="flex items-center gap-3 cursor-pointer select-none">
+                        <input type="checkbox" className="w-5 h-5 rounded text-red-600 focus:ring-red-500" checked={config.permissions.commonCanManageDestinations} onChange={(e) => handleConfigChange('permissions', 'commonCanManageDestinations', e.target.checked)}/>
+                        <span className="text-sm text-slate-700 dark:text-slate-300">Gerenciar Destinos</span>
+                      </label>
+                       <label className="flex items-center gap-3 cursor-pointer select-none">
+                        <input type="checkbox" className="w-5 h-5 rounded text-red-600 focus:ring-red-500" checked={config.permissions.commonCanManageVolumes} onChange={(e) => handleConfigChange('permissions', 'commonCanManageVolumes', e.target.checked)}/>
+                        <span className="text-sm text-slate-700 dark:text-slate-300">Gerenciar Opções de Volumes</span>
+                      </label>
+                      <label className="flex items-center gap-3 cursor-pointer select-none">
+                        <input type="checkbox" className="w-5 h-5 rounded text-red-600 focus:ring-red-500" checked={config.permissions.commonCanManageRetention} onChange={(e) => handleConfigChange('permissions', 'commonCanManageRetention', e.target.checked)}/>
+                        <span className="text-sm text-slate-700 dark:text-slate-300">Gerenciar Retenção de Histórico</span>
+                      </label>
+                      <label className="flex items-center gap-3 cursor-pointer select-none">
+                        <input type="checkbox" className="w-5 h-5 rounded text-red-600 focus:ring-red-500" checked={config.permissions.commonCanManagePageLimit} onChange={(e) => handleConfigChange('permissions', 'commonCanManagePageLimit', e.target.checked)}/>
+                        <span className="text-sm text-slate-700 dark:text-slate-300">Gerenciar Limite de Listagem</span>
+                      </label>
+                    </div>
+                 </div>
+                 <div>
+                    <h5 className="font-bold text-slate-500 dark:text-slate-400 text-xs uppercase mb-4 tracking-wider">Acesso Comum (Dados)</h5>
+                    <div className="space-y-3">
+                      <label className="flex items-center gap-3 cursor-pointer select-none">
+                        <input type="checkbox" className="w-5 h-5 rounded text-red-600 focus:ring-red-500" checked={config.permissions.commonCanEditProntuario} onChange={(e) => handleConfigChange('permissions', 'commonCanEditProntuario', e.target.checked)}/>
+                        <span className="text-sm text-slate-700 dark:text-slate-300">Editar Prontuários</span>
+                      </label>
+                      <label className="flex items-center gap-3 cursor-pointer select-none">
+                        <input type="checkbox" className="w-5 h-5 rounded text-red-600 focus:ring-red-500" checked={config.permissions.commonCanDeleteProntuario} onChange={(e) => handleConfigChange('permissions', 'commonCanDeleteProntuario', e.target.checked)}/>
+                        <span className="text-sm text-slate-700 dark:text-slate-300">Excluir Prontuários</span>
+                      </label>
+                    </div>
+                 </div>
+              </div>
           </div>
         </div>
       )}

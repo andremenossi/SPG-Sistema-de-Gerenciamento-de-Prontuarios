@@ -1,7 +1,8 @@
+
 import React, { useState, useEffect } from 'react';
 import { db } from '../services/database';
 import { ProntuarioStatus } from '../types';
-import { FileSpreadsheet, Upload, CheckCircle, AlertTriangle, Calendar as CalendarIcon, Save, Eraser, Info, ArrowLeft, Trash2, Check, AlertCircle, Loader2, ChevronDown } from 'lucide-react';
+import { FileSpreadsheet, Upload, CheckCircle, AlertTriangle, Calendar as CalendarIcon, Save, Eraser, Info, ArrowLeft, Trash2, Check, AlertCircle, Loader2, ChevronDown, X } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
 // Separate interface for Bulk Import Items to match the Table Structure
@@ -28,6 +29,7 @@ const Register: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'manual' | 'bulk'>('manual');
   const [destinations, setDestinations] = useState<string[]>([]);
   const [config, setConfig] = useState(db.getConfig());
+  const [currentUser, setCurrentUser] = useState<any>(null);
 
   // --- MANUAL STATE ---
   const initialFormState = { 
@@ -44,15 +46,20 @@ const Register: React.FC = () => {
   const [newP, setNewP] = useState(initialFormState);
   const [message, setMessage] = useState<{type: 'success' | 'error', text: string} | null>(null);
 
-  // --- BULK STATE (Mimicking ImportAgenda) ---
+  // --- BULK STATE ---
   const [bulkDrafts, setBulkDrafts] = useState<BulkImportDraft[]>([]);
   const [activeDraft, setActiveDraft] = useState<BulkImportDraft | null>(null);
   const [reviewItems, setReviewItems] = useState<BulkImportItem[]>([]);
   const [selectAll, setSelectAll] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
   const [deleteDraftId, setDeleteDraftId] = useState<string | null>(null);
+  const [bulkMessage, setBulkMessage] = useState<{type: 'success' | 'error', text: string} | null>(null);
 
   useEffect(() => {
+    // Session in sessionStorage
+    const session = sessionStorage.getItem('sgp_session');
+    if (session) setCurrentUser(JSON.parse(session));
+
     setDestinations(db.getDestinations());
     const loadedConfig = db.getConfig();
     setConfig(loadedConfig);
@@ -140,16 +147,28 @@ const Register: React.FC = () => {
         return;
     }
 
-    if (!newP.idade) { setMessage({type: 'error', text: 'Idade obrigatória.'}); return; }
-    if (!newP.sexo) { setMessage({type: 'error', text: 'Sexo obrigatório.'}); return; }
-    if (!newP.nascimento) { setMessage({type: 'error', text: 'Nascimento obrigatório.'}); return; }
+    // Validation Check with Admin Bypass
+    const isAdmin = currentUser?.tipo === 'admin';
+    const canBypass = isAdmin && config.adminCanBypassRequiredFields;
+
+    if (!canBypass) {
+        if (!newP.numero) { setMessage({type: 'error', text: 'Número obrigatório.'}); return; }
+        if (!newP.nome) { setMessage({type: 'error', text: 'Nome obrigatório.'}); return; }
+        if (!newP.idade) { setMessage({type: 'error', text: 'Idade obrigatória.'}); return; }
+        if (!newP.sexo || newP.sexo === 'O') { setMessage({type: 'error', text: 'Sexo obrigatório.'}); return; }
+        if (!newP.nascimento) { setMessage({type: 'error', text: 'Nascimento obrigatório.'}); return; }
+    } else {
+        // If bypassing, normalization
+        if (!newP.sexo) newP.sexo = 'O';
+        if (!newP.nascimento) newP.nascimento = '00/00/0000';
+    }
 
     try {
       db.addProntuario({
         numero_prontuario: newP.numero,
         nome_paciente: newP.nome,
         idade: parseInt(newP.idade) || 0,
-        sexo: newP.sexo,
+        sexo: newP.sexo || 'O',
         data_nascimento: newP.nascimento || '00/00/0000',
         status: newP.status,
         local_atual: newP.local,
@@ -232,7 +251,7 @@ const Register: React.FC = () => {
              }).filter(r => r.numero || r.nome); // Filter completely empty rows
 
              if (parsedItems.length === 0) {
-                 alert("Nenhuma coluna válida identificada. Verifique o cabeçalho (Numero, Nome, Idade).");
+                 setBulkMessage({type: 'error', text: "Nenhuma coluna válida identificada. Verifique o cabeçalho (Numero, Nome, Idade)."});
                  return;
              }
 
@@ -246,7 +265,7 @@ const Register: React.FC = () => {
              setBulkDrafts(prev => [...prev, newDraft]);
              e.target.value = ''; // Reset input
 
-         } catch(e) { alert("Erro ao ler arquivo"); }
+         } catch(e) { setBulkMessage({type: 'error', text: "Erro ao ler arquivo"}); }
      };
      reader.readAsArrayBuffer(file);
   };
@@ -255,6 +274,7 @@ const Register: React.FC = () => {
       setActiveDraft(draft);
       setReviewItems(draft.items);
       setSelectAll(true);
+      setBulkMessage(null);
   };
 
   const confirmDeleteDraft = () => {
@@ -290,13 +310,18 @@ const Register: React.FC = () => {
 
   const processBatch = () => {
       const toProcess = reviewItems.filter(i => i.selecionado);
-      if (toProcess.length === 0) { alert("Nenhum item selecionado."); return; }
+      if (toProcess.length === 0) { setBulkMessage({type: 'error', text: "Nenhum item selecionado."}); return; }
       
+      const isAdmin = currentUser?.tipo === 'admin';
+      const canBypass = isAdmin && config.adminCanBypassRequiredFields;
+
       // Validation Check
-      const missingMandatory = toProcess.find(i => !i.numero || !i.nome || !i.idade);
-      if (missingMandatory) {
-          alert(`Erro: O paciente "${missingMandatory.nome || 'Sem Nome'}" (Nº ${missingMandatory.numero}) está faltando dados obrigatórios (Número, Nome ou Idade).`);
-          return;
+      if (!canBypass) {
+          const missingMandatory = toProcess.find(i => !i.numero || !i.nome || !i.idade);
+          if (missingMandatory) {
+              setBulkMessage({type: 'error', text: `Erro: O paciente "${missingMandatory.nome || 'Sem Nome'}" (Nº ${missingMandatory.numero}) está faltando dados obrigatórios (Número, Nome ou Idade).`});
+              return;
+          }
       }
 
       setIsProcessing(true);
@@ -336,7 +361,7 @@ const Register: React.FC = () => {
           });
 
           setIsProcessing(false);
-          alert(`Importação Concluída!\nCadastrados: ${count}\nDuplicados Ignorados: ${duplicates}`);
+          setBulkMessage({type: 'success', text: `Importação Concluída! Cadastrados: ${count}. Duplicados Ignorados: ${duplicates}`});
           
           // Remove processed draft
           setBulkDrafts(prev => prev.filter(d => d.id !== activeDraft?.id));
@@ -397,9 +422,10 @@ const Register: React.FC = () => {
                             <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Número do Prontuário *</label>
                             <input 
                                 type="text" 
-                                required
+                                required={!config.adminCanBypassRequiredFields}
                                 value={newP.numero}
                                 onChange={handleNumberChange}
+                                tabIndex={1}
                                 className="w-full text-2xl font-bold text-slate-800 dark:text-white border-b-2 border-slate-200 dark:border-slate-600 focus:border-hospital-500 dark:focus:border-hospital-500 outline-none py-2 px-2 bg-transparent transition-colors placeholder:text-slate-300"
                                 placeholder="000000"
                             />
@@ -409,9 +435,10 @@ const Register: React.FC = () => {
                             <div className="relative">
                                 <input 
                                     type="text" 
-                                    required
+                                    required={!config.adminCanBypassRequiredFields}
                                     value={newP.nascimento}
                                     onChange={handleDateTextChange}
+                                    tabIndex={3}
                                     maxLength={10}
                                     className="w-full text-lg text-slate-800 dark:text-white border-b-2 border-slate-200 dark:border-slate-600 focus:border-hospital-500 dark:focus:border-hospital-500 outline-none py-2 px-2 bg-transparent transition-colors pr-8"
                                     placeholder="DD/MM/AAAA"
@@ -427,9 +454,10 @@ const Register: React.FC = () => {
                                 <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Idade *</label>
                                 <input 
                                     type="text" 
-                                    required
+                                    required={!config.adminCanBypassRequiredFields}
                                     value={newP.idade}
                                     onChange={handleAgeChange}
+                                    tabIndex={5}
                                     className="w-full text-lg text-slate-800 dark:text-white border-b-2 border-slate-200 dark:border-slate-600 focus:border-hospital-500 dark:focus:border-hospital-500 outline-none py-2 px-2 bg-transparent transition-colors"
                                     placeholder="0"
                                 />
@@ -440,7 +468,8 @@ const Register: React.FC = () => {
                                     <select 
                                         value={newP.sexo} 
                                         onChange={(e) => setNewP({...newP, sexo: e.target.value})}
-                                        className="w-full text-lg text-slate-800 dark:text-white border-b-2 border-slate-200 dark:border-slate-600 focus:border-hospital-500 dark:focus:border-hospital-500 outline-none py-2 px-2 bg-transparent transition-colors appearance-none"
+                                        tabIndex={6}
+                                        className="w-full text-lg text-slate-800 dark:text-white border-b-2 border-slate-200 dark:border-slate-600 focus:border-hospital-500 dark:focus:border-hospital-500 outline-none py-2 px-2 bg-transparent dark:bg-slate-800 transition-colors appearance-none"
                                     >
                                         <option value="O">Outro</option>
                                         <option value="M">Masculino</option>
@@ -454,13 +483,14 @@ const Register: React.FC = () => {
 
                     {/* RIGHT COL (Nome, Volumes, Local/Situacao) */}
                     <div className="space-y-6">
-                        <div>
+                        <div className="order-first md:order-none">
                             <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Nome Completo *</label>
                             <input 
                                 type="text" 
-                                required
+                                required={!config.adminCanBypassRequiredFields}
                                 value={newP.nome}
                                 onChange={handleNameChange}
+                                tabIndex={2}
                                 className="w-full text-lg font-medium text-slate-800 dark:text-white border-b-2 border-slate-200 dark:border-slate-600 focus:border-hospital-500 dark:focus:border-hospital-500 outline-none py-2 px-2 bg-transparent transition-colors uppercase placeholder:text-slate-300"
                                 placeholder="NOME DO PACIENTE"
                             />
@@ -471,7 +501,8 @@ const Register: React.FC = () => {
                                  <select 
                                     value={newP.volumes} 
                                     onChange={(e) => setNewP({...newP, volumes: e.target.value})}
-                                    className="w-full text-lg text-slate-800 dark:text-white border-b-2 border-slate-200 dark:border-slate-600 focus:border-hospital-500 dark:focus:border-hospital-500 outline-none py-2 px-2 bg-transparent transition-colors appearance-none"
+                                    tabIndex={4}
+                                    className="w-full text-lg text-slate-800 dark:text-white border-b-2 border-slate-200 dark:border-slate-600 focus:border-hospital-500 dark:focus:border-hospital-500 outline-none py-2 px-2 bg-transparent dark:bg-slate-800 transition-colors appearance-none"
                                  >
                                      {config.volumeOptions.map(vol => <option key={vol} value={vol}>{vol}</option>)}
                                  </select>
@@ -485,7 +516,8 @@ const Register: React.FC = () => {
                                     <select 
                                         value={newP.local}
                                         onChange={handleLocalChange}
-                                        className="w-full text-lg text-slate-800 dark:text-white border-b-2 border-slate-200 dark:border-slate-600 focus:border-hospital-500 dark:focus:border-hospital-500 outline-none py-2 px-2 bg-transparent transition-colors appearance-none"
+                                        tabIndex={7}
+                                        className="w-full text-lg text-slate-800 dark:text-white border-b-2 border-slate-200 dark:border-slate-600 focus:border-hospital-500 dark:focus:border-hospital-500 outline-none py-2 px-2 bg-transparent dark:bg-slate-800 transition-colors appearance-none"
                                     >
                                         {destinations.map(d => <option key={d} value={d}>{d}</option>)}
                                     </select>
@@ -498,7 +530,8 @@ const Register: React.FC = () => {
                                     <select 
                                         value={newP.status}
                                         onChange={(e) => setNewP({...newP, status: e.target.value as ProntuarioStatus})}
-                                        className="w-full text-lg text-slate-800 dark:text-white border-b-2 border-slate-200 dark:border-slate-600 focus:border-hospital-500 dark:focus:border-hospital-500 outline-none py-2 px-2 bg-transparent transition-colors appearance-none"
+                                        tabIndex={8}
+                                        className="w-full text-lg text-slate-800 dark:text-white border-b-2 border-slate-200 dark:border-slate-600 focus:border-hospital-500 dark:focus:border-hospital-500 outline-none py-2 px-2 bg-transparent dark:bg-slate-800 transition-colors appearance-none"
                                     >
                                         <option value={ProntuarioStatus.ATIVO}>Ativo</option>
                                         <option value={ProntuarioStatus.DESATIVADO}>Desativado</option>
@@ -536,6 +569,15 @@ const Register: React.FC = () => {
                         <input type="file" className="hidden" accept=".xlsx,.xls,.csv" onChange={handleFileUpload} />
                     </label>
                 </div>
+                
+                {/* Bulk Message Display */}
+                {bulkMessage && (
+                    <div className={`mb-6 p-4 rounded-lg flex items-center gap-3 ${bulkMessage.type === 'success' ? 'bg-green-100 text-green-700 border border-green-200' : 'bg-red-100 text-red-700 border border-red-200'}`}>
+                        {bulkMessage.type === 'success' ? <CheckCircle size={20}/> : <AlertTriangle size={20}/>}
+                        <span className="font-bold">{bulkMessage.text}</span>
+                        <button onClick={() => setBulkMessage(null)} className="ml-auto opacity-50 hover:opacity-100"><X size={16}/></button>
+                    </div>
+                )}
 
                 {/* DRAFTS */}
                 {bulkDrafts.length > 0 && (
@@ -605,19 +647,19 @@ const Register: React.FC = () => {
                                            <input type="number" value={item.idade} onChange={(e) => handleReviewItemChange(item.id, 'idade', e.target.value)} className="border border-slate-300 dark:border-slate-600 rounded p-1.5 w-full text-center dark:bg-slate-900 dark:text-white" />
                                        </td>
                                        <td className="p-3">
-                                            <select value={item.sexo || 'O'} onChange={(e) => handleReviewItemChange(item.id, 'sexo', e.target.value)} className="border border-slate-300 dark:border-slate-600 rounded p-1.5 w-full dark:bg-slate-900 dark:text-white">
+                                            <select value={item.sexo || 'O'} onChange={(e) => handleReviewItemChange(item.id, 'sexo', e.target.value)} className="border border-slate-300 dark:border-slate-600 rounded p-1.5 w-full dark:bg-slate-800 dark:text-white">
                                                 <option value="M">Masculino</option>
                                                 <option value="F">Feminino</option>
                                                 <option value="O">Outro</option>
                                             </select>
                                        </td>
                                        <td className="p-3">
-                                            <select value={item.local} onChange={(e) => handleReviewItemChange(item.id, 'local', e.target.value)} className="border border-slate-300 dark:border-slate-600 rounded p-1.5 w-full dark:bg-slate-900 dark:text-white">
+                                            <select value={item.local} onChange={(e) => handleReviewItemChange(item.id, 'local', e.target.value)} className="border border-slate-300 dark:border-slate-600 rounded p-1.5 w-full dark:bg-slate-800 dark:text-white">
                                                 {destinations.map(d => <option key={d} value={d}>{d}</option>)}
                                             </select>
                                        </td>
                                        <td className="p-3">
-                                            <select value={item.status} onChange={(e) => handleReviewItemChange(item.id, 'status', e.target.value)} className="border border-slate-300 dark:border-slate-600 rounded p-1.5 w-full dark:bg-slate-900 dark:text-white">
+                                            <select value={item.status} onChange={(e) => handleReviewItemChange(item.id, 'status', e.target.value)} className="border border-slate-300 dark:border-slate-600 rounded p-1.5 w-full dark:bg-slate-800 dark:text-white">
                                                 <option value={ProntuarioStatus.ATIVO}>Ativo</option>
                                                 <option value={ProntuarioStatus.DESATIVADO}>Desativado</option>
                                                 <option value={ProntuarioStatus.PERDIDO}>Perdido</option>

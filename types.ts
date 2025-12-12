@@ -79,7 +79,12 @@ export interface SystemConfig {
     commonCanManageDestinations: boolean;
     commonCanManageVolumes: boolean;
     commonCanManageRetention: boolean;
+    commonCanCustomizeVisuals: boolean;
+    commonCanManagePageLimit: boolean;
   };
   volumeOptions: string[]; 
   agendaHistoryRetentionDays?: number; // Dias para manter histórico (0 ou null = infinito)
+  adminCanBypassRequiredFields?: boolean; // Se true, admin pode salvar mesmo com campos faltando
+  maxRowsSearch?: number; // Limite na tela de busca
+  maxRowsHistory?: number; // Limite na tela de histórico
 }

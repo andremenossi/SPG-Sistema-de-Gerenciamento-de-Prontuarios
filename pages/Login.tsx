@@ -74,7 +74,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
                 <label className="block text-xs font-bold text-slate-600 uppercase mb-1 ml-1">Usuário</label>
                 <input
                   type="text"
-                  className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-hospital-500 focus:border-hospital-500 transition-all outline-none bg-white/80"
+                  className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-hospital-500 focus:border-hospital-500 transition-all outline-none bg-white/80 text-slate-800 placeholder-slate-400"
                   placeholder="Ex: admin"
                   value={login}
                   onChange={(e) => setLogin(e.target.value)}
@@ -86,7 +86,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
                 <div className="relative">
                     <input
                       type={showPassword ? "text" : "password"}
-                      className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-hospital-500 focus:border-hospital-500 transition-all outline-none bg-white/80 pr-10"
+                      className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-hospital-500 focus:border-hospital-500 transition-all outline-none bg-white/80 pr-10 text-slate-800 placeholder-slate-400"
                       placeholder="••••••••"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}

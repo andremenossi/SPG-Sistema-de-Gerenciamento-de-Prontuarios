@@ -1,5 +1,5 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { db } from '../services/database';
 import { Movimentacao } from '../types';
 import { Download, Filter, Calendar, ArrowUp, ArrowDown, X } from 'lucide-react';
@@ -11,14 +11,30 @@ const History: React.FC = () => {
   const [filterText, setFilterText] = useState('');
   const [dateFilter, setDateFilter] = useState('');
   const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ key: 'data_hora', direction: 'desc' });
+  const filterInputRef = useRef<HTMLInputElement>(null);
   
-  const history = db.getMovimentacoes();
+  const [history, setHistory] = useState<Movimentacao[]>([]);
+  const [config, setConfig] = useState(db.getConfig());
+
+  useEffect(() => {
+      setHistory(db.getMovimentacoes());
+      setConfig(db.getConfig());
+  }, []);
+
+  const handleClearFilter = () => {
+    setFilterText('');
+    filterInputRef.current?.focus();
+  };
 
   const handleSort = (key: SortKey) => {
     setSortConfig(current => ({
       key,
       direction: current.key === key && current.direction === 'asc' ? 'desc' : 'asc',
     }));
+  };
+
+  const normalizeText = (text: string) => {
+      return text ? text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase() : "";
   };
 
   const sortedData = useMemo(() => {
@@ -36,17 +52,28 @@ const History: React.FC = () => {
 
   const filteredData = useMemo(() => {
     return sortedData.filter(item => {
+      const lowerFilter = normalizeText(filterText);
       const matchesText = 
-        item.nome_paciente.toLowerCase().includes(filterText.toLowerCase()) ||
-        item.numero_prontuario.includes(filterText) ||
-        item.destino.toLowerCase().includes(filterText.toLowerCase()) ||
-        item.usuario_responsavel.toLowerCase().includes(filterText.toLowerCase());
+        normalizeText(item.nome_paciente).includes(lowerFilter) ||
+        normalizeText(item.numero_prontuario).includes(lowerFilter) ||
+        normalizeText(item.destino).includes(lowerFilter) ||
+        normalizeText(item.usuario_responsavel).includes(lowerFilter);
       
       const matchesDate = dateFilter ? item.data_hora.startsWith(dateFilter) : true;
 
       return matchesText && matchesDate;
     });
   }, [sortedData, filterText, dateFilter]);
+
+  // Apply Pagination Limit or Date Override
+  const displayedData = useMemo(() => {
+      // If filtering by date, show ALL records for that date (ignore limit)
+      if (dateFilter) return filteredData;
+
+      const limit = config.maxRowsHistory !== undefined ? config.maxRowsHistory : 20;
+      if (limit === 0) return filteredData; // 0 = No limit
+      return filteredData.slice(0, limit);
+  }, [filteredData, config.maxRowsHistory, dateFilter]);
 
   const exportToExcel = () => {
     const ws = XLSX.utils.json_to_sheet(filteredData);
@@ -82,13 +109,14 @@ const History: React.FC = () => {
           <div className="relative flex-1">
              <Filter className="absolute left-3 top-2.5 text-slate-400" size={18} />
              <input
+                ref={filterInputRef}
                 type="text"
                 placeholder="Filtrar por nome, prontuário, destino..."
                 className="pl-10 pr-10 py-2 w-full border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-hospital-500 outline-none dark:bg-slate-900 dark:text-white"
                 value={filterText}
                 onChange={(e) => setFilterText(e.target.value)}
              />
-             {filterText && <button onClick={() => setFilterText('')} className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"><X size={18} /></button>}
+             {filterText && <button onClick={handleClearFilter} className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"><X size={18} /></button>}
           </div>
           <div className="relative">
             <Calendar className="absolute left-3 top-2.5 text-slate-400" size={18} />
@@ -127,7 +155,7 @@ const History: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
-              {filteredData.map((item) => (
+              {displayedData.map((item) => (
                 <tr key={item.id} className="hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">
                   <td className="px-6 py-4 whitespace-nowrap">
                     {new Date(item.data_hora).toLocaleString('pt-BR')}
@@ -155,7 +183,7 @@ const History: React.FC = () => {
                   </td>
                 </tr>
               ))}
-              {filteredData.length === 0 && (
+              {displayedData.length === 0 && (
                 <tr>
                   <td colSpan={8} className="px-6 py-12 text-center text-slate-400 dark:text-slate-500">
                     Nenhum registro encontrado.
@@ -165,6 +193,11 @@ const History: React.FC = () => {
             </tbody>
           </table>
         </div>
+      </div>
+      
+      {/* FOOTER INFO */}
+      <div className="text-xs text-slate-400 dark:text-slate-500 text-right px-2">
+          Exibindo {displayedData.length} de {filteredData.length} registros (Limite: {dateFilter ? 'Data Específica' : (config.maxRowsHistory !== undefined && config.maxRowsHistory > 0 ? config.maxRowsHistory : 'Sem Limite')})
       </div>
     </div>
   );
